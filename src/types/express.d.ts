@@ -12,8 +12,3 @@ declare module "express-serve-static-core" {
     user?: AuthUser;
   }
 }
-declare module "xss-clean" {
-  import { RequestHandler } from "express";
-  function xssClean(): RequestHandler;
-  export = xssClean;
-}
