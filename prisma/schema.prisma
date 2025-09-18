@@ -1,0 +1,240 @@
+// Prisma schema file
+// Define your data models here
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+  VISITOR
+}
+
+model User {
+  id                 String        @id @default(uuid())
+  email              String        @unique
+  password           String?
+  phone        String?  @unique
+  name               String?
+  role               String        @default("VISITOR")
+  createdAt          DateTime      @default(now())
+  listings           Listing[]
+  media              Media[]
+  reportsMade        Report[]      @relation("Reporter")
+  reportsReviewed    Report[]      @relation("ReviewedBy")
+  buyerTransactions  Transaction[] @relation("buyerTransactions")
+  sellerTransactions Transaction[] @relation("sellerTransactions")
+  auditLogs          AuditLog[]    @relation("Actor")
+  messagesSent       Message[]     @relation("sentMessages")
+  messagesRecv       Message[]     @relation("recvMessages")
+  isKycVerified      Boolean       @default(false)
+  kycDocument        Kyc?          @relation("KycDoc")
+  kycDocumentId      String?
+  givenReviews       Review[]      @relation("givenReviews")
+  receivedReviews    Review[]      @relation("receivedReviews")
+  Session            Session[]
+  isBanned Boolean  @default(false)
+  otpCode      String?   // temporary OTP code
+  otpExpiresAt DateTime?
+
+  // Social auth
+  provider     String?   // "google" | "apple"
+  providerId   String?   // Google UID, Apple sub, etc
+}
+
+model Kyc {
+  id           String    @id @default(uuid())
+  user         User      @relation("KycDoc", fields: [userId], references: [id])
+  userId       String    @unique
+  documentUrl  String
+  documentType String? // e.g., "passport", "id_card"
+  status       KycStatus @default(PENDING)
+  adminNote    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Listing {
+  id           String        @id @default(uuid())
+  title        String
+  description  String
+  priceCents   Int
+  price       Float
+  currency     String        @default("NGN")
+  isDigital    Boolean       @default(false)
+  seller       User          @relation(fields: [sellerId], references: [id])
+  sellerId     String
+  location     Location?     @relation(fields: [locationId], references: [id])
+  locationId   String?
+  category     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  media        Media[]
+  transactions Transaction[]
+  Message      Message[]
+  status      ListingStatus @default(PENDING)
+  
+}
+
+model Location {
+  id        String    @id @default(uuid())
+  lat       Float
+  lng       Float
+  city      String?
+  region    String?
+  country   String?
+  geohash   String    @db.VarChar(128)
+  createdAt DateTime  @default(now())
+  listings  Listing[]
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  url       String
+  publicId  String
+  mimeType  String
+  size      Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  listing   Listing? @relation(fields: [listingId], references: [id])
+  listingId String?
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String
+  sender      User     @relation("sentMessages", fields: [senderId], references: [id])
+  senderId    String
+  recipient   User     @relation("recvMessages", fields: [recipientId], references: [id])
+  listing     Listing? @relation(fields: [listingId], references: [id])
+  listingId   String?
+  recipientId String
+  text        String?
+  status     MessageStatus @default(SENT)
+  deliveredAt DateTime?
+  readAt     DateTime?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+}
+
+model Report {
+  id           String       @id @default(uuid())
+  reporter     User         @relation("Reporter", fields: [reporterId], references: [id])
+  reporterId   String
+  targetType   String // "listing" | "user" | "message"
+  targetId     String
+  reason       String
+  status       ReportStatus @default(PENDING)
+  adminNote    String?
+  createdAt    DateTime     @default(now())
+  reviewedBy   User?        @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+  resolved     Boolean @default(false)
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  ACTIONED
+  REJECTED
+}
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actor     User     @relation("Actor", fields: [actorId], references: [id])
+  actorId   String
+  action    String // e.g. "REPORT_RESOLVED", "USER_SUSPENDED"
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model Transaction {
+  id          String        @id @default(uuid())
+  listing     Listing       @relation(fields: [listingId], references: [id])
+  listingId   String
+  buyer       User          @relation("buyerTransactions", fields: [buyerId], references: [id])
+  buyerId     String
+  seller      User          @relation("sellerTransactions", fields: [sellerId], references: [id])
+  sellerId    String
+  amountCents Int
+  currency    String        @default("NGN")
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  receiptUrl  String? // Optional proof (image uploaded to Cloudinary)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  review      Review[]
+}
+
+model Session {
+  id             String   @id @default(uuid())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
+  device         String?
+  ip             String?
+  deviceToken    String? // <-- store FCM / Expo push token here
+  devicePlatform String? // e.g. "android","ios","expo"
+  createdAt      DateTime @default(now())
+  lastSeen       DateTime @default(now())
+  revoked        Boolean  @default(false)
+  socketId       String?    // active socket connection
+  isOnline       Boolean    @default(false)
+}
+
+model Review {
+  id            String      @id @default(uuid())
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  transactionId String
+
+  reviewer   User   @relation("givenReviews", fields: [reviewerId], references: [id])
+  reviewerId String
+
+  reviewee   User   @relation("receivedReviews", fields: [revieweeId], references: [id])
+  revieweeId String
+
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+}
+enum ListingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REMOVED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  PAYSTACK
+  FLUTTERWAVE
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
